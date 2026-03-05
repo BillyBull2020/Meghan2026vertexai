@@ -232,7 +232,12 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
                     disabled: false, // Re-enable VAD now that feedback/rate issues are solved
                 },
             }),
-            runtime_config: None,
+            runtime_config: Some(RuntimeConfig {
+                audio_configuration: AudioConfiguration {
+                    start_sensitivity: "LOW".to_string(),
+                    end_sensitivity: "LOW".to_string(),
+                },
+            }),
         },
     }
 }
