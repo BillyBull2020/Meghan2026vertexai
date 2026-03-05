@@ -60,6 +60,8 @@ function App() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'audio') {
             await stream.playChunk(msg.data);
+          } else if (msg.type === 'text') {
+            setTranscript(msg.data); // Update transcript with new text
           } else {
             console.log('Server message:', msg);
           }
@@ -99,14 +101,28 @@ function App() {
   return (
     <div className="ambient-container">
       <div className="status-bar">
-        <div className="status-item">
-          <Activity size={14} className={isConnected ? 'text-accent' : ''} />
-          <span>Stream: {isConnected ? 'Active' : 'Idle'}</span>
-        </div>
-        <div className="status-item">
-          <Brain size={14} />
-          <span>Core: Vertex AI L4</span>
-        </div>
+        <p className={`status ${isConnected ? 'active' : ''}`}>
+          {isConnected ? 'Stream: Active' : 'Stream: Offline'}
+        </p>
+
+        {transcript && (
+          <p style={{
+            marginTop: '20px',
+            color: 'rgba(255,255,255,0.8)',
+            fontSize: '1.1rem',
+            maxWidth: '80%',
+            textAlign: 'center',
+            minHeight: '1.5em'
+          }}>
+            {transcript}
+          </p>
+        )}
+
+        <p className="hint">
+          {isConnected
+            ? 'Neural link established. Speak now.'
+            : 'Click the orb to initiate neural uplink.'}
+        </p>
         <div className="status-item">
           <ShieldCheck size={14} />
           <span>Auth: Secured</span>

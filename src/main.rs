@@ -337,57 +337,52 @@ async fn handle_web_socket(
 
             // Incoming from Vertex -> Forward to Web
             Some(vertex_msg) = vertex_rx.recv() => {
-                info!("Received message from Vertex ({} bytes)", vertex_msg.len());
-                // Try to parse as JSON to extract audio data from Vertex's response
+                // Try to parse as JSON to extract audio/text data from Vertex's response
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&vertex_msg) {
-                    // Check for audio in serverContent.modelTurn.parts[].inlineData.data
+                    let mut found_content = false;
+
                     if let Some(parts) = parsed
                         .get("serverContent")
                         .and_then(|sc| sc.get("modelTurn"))
                         .and_then(|mt| mt.get("parts"))
                         .and_then(|p| p.as_array())
                     {
-                        info!("Found {} parts with audio data", parts.len());
                         for part in parts {
+                            // 1. Check for audio data
                             if let Some(b64_audio) = part
                                 .get("inlineData")
                                 .and_then(|id| id.get("data"))
                                 .and_then(|d| d.as_str())
                             {
-                                info!("Forwarding audio chunk ({} base64 chars)", b64_audio.len());
-                                // Build the web-client message directly as JSON string
-                                let audio_msg = serde_json::json!({
-                                    "type": "audio",
-                                    "data": b64_audio
-                                });
-                                if let Err(e) = web_tx.send(axum::extract::ws::Message::Text(audio_msg.to_string().into())).await {
-                                    error!("Failed to send audio to web: {}", e);
-                                    break;
+                                found_content = true;
+                                let audio_msg = serde_json::json!({ "type": "audio", "data": b64_audio });
+                                let _ = web_tx.send(axum::extract::ws::Message::Text(audio_msg.to_string().into())).await;
+                            }
+                            
+                            // 2. Check for text/transcript
+                            if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                                if !text.trim().is_empty() {
+                                    found_content = true;
+                                    let text_msg = serde_json::json!({ "type": "text", "data": text });
+                                    let _ = web_tx.send(axum::extract::ws::Message::Text(text_msg.to_string().into())).await;
                                 }
                             }
                         }
-                    } else {
-                        // Non-audio JSON (setupComplete, toolCall, etc.) → forward as protocol
-                        info!("Protocol message from Vertex: {}", &vertex_msg[..vertex_msg.len().min(200)]);
+                    }
+
+                    // 3. Fallback for protocol (setupComplete, etc.) or if nothing else was found
+                    if !found_content {
                         let web_msg = serde_json::json!({
                             "type": "protocol",
-                            "data": vertex_msg
+                            "data": parsed
                         });
-                        if let Err(e) = web_tx.send(axum::extract::ws::Message::Text(web_msg.to_string().into())).await {
-                            error!("Failed to send protocol to web: {}", e);
-                            break;
-                        }
+                        let _ = web_tx.send(axum::extract::ws::Message::Text(web_msg.to_string().into())).await;
                     }
                 } else {
-                    // Non-JSON (raw base64 binary that was encoded upstream)
-                    info!("Non-JSON message from Vertex ({} bytes), forwarding as audio", vertex_msg.len());
-                    let audio_msg = serde_json::json!({
-                        "type": "audio",
-                        "data": vertex_msg
-                    });
-                    if let Err(e) = web_tx.send(axum::extract::ws::Message::Text(audio_msg.to_string().into())).await {
-                        error!("Failed to send audio to web: {}", e);
-                        break;
+                    // Non-JSON fallback (raw base64 encoded by upstream client)
+                    if !vertex_msg.trim().is_empty() {
+                        let audio_msg = serde_json::json!({ "type": "audio", "data": vertex_msg });
+                        let _ = web_tx.send(axum::extract::ws::Message::Text(audio_msg.to_string().into())).await;
                     }
                 }
             }

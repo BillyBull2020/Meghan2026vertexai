@@ -143,22 +143,12 @@ pub async fn spawn_vertex_voice_agent(
                     }
                 }
                 Ok(Message::Binary(data)) => {
-                    // Gemini sometimes sends JSON protocol in binary frames.
-                    // If it starts with '{', treat it as a protocol message (text).
-                    if !data.is_empty() && data[0] == b'{' {
-                        let text = String::from_utf8_lossy(&data).to_string();
-                        info!(agent_id = %agent_id, "Vertex Protocol (Binary): {}", &text[..text.len().min(200)]);
-                        if let Err(e) = on_server_message.send(text).await {
-                            error!("Failed to forward binary protocol: {}", e);
-                            break;
-                        }
-                    } else {
-                        info!(agent_id = %agent_id, "Binary audio chunk ({} bytes)", data.len());
-                        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-                        if let Err(e) = on_server_message.send(b64).await {
-                            error!("Failed to forward binary chunk: {}", e);
-                            break;
-                        }
+                    // Gemini sends almost everything (including audio JSON) in Binary frames.
+                    // We convert to string so main.rs can parse the JSON inside.
+                    let text = String::from_utf8_lossy(&data).to_string();
+                    if let Err(e) = on_server_message.send(text).await {
+                        error!("Failed to forward binary message: {}", e);
+                        break;
                     }
                 }
                 Ok(Message::Close(frame)) => {
@@ -239,7 +229,7 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
             },
             realtime_input_config: Some(RealtimeInputConfig {
                 automatic_activity_detection: AutomaticActivityDetection {
-                    disabled: true, // Disable VAD to prevent feedback/machine scream
+                    disabled: false, // Re-enable VAD now that feedback/rate issues are solved
                 },
             }),
             runtime_config: None,
