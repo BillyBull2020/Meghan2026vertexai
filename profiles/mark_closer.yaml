@@ -10,7 +10,7 @@ display_name: "Mark — ROI & Closing"
 
 vertex_ai_config:
   model: "gemini-live-2.5-flash-native-audio"
-  voice: "Puck"
+  voice: "Fenrir"
   location: "us-central1"
 
 neuro_system_prompt: >

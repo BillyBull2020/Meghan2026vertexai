@@ -227,7 +227,7 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
                     text: profile.neuro_system_prompt.clone(),
                 }],
             },
-            realtime_input_config: None,
+            realtime_input_config: None, // Use API default: VAD enabled, responds when user stops speaking
             runtime_config: None,
         },
     }
