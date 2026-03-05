@@ -10,7 +10,7 @@ display_name: "Aria — Inbound Receptionist"
 
 vertex_ai_config:
   model: "gemini-live-2.5-flash-native-audio"
-  voice: "Aoede"
+  voice: "Kore"
   location: "us-central1"
 
 neuro_system_prompt: >

@@ -45,9 +45,12 @@ export class AudioStream {
         };
 
         source.connect(this.processor);
-        // CRITICAL: Do NOT connect processor to destination. 
-        // Connecting to destination causes a "monitor" loop where you hear your own mic.
-        // this.processor.connect(this.audioContext.destination); 
+
+        // Use a GainNode with 0 gain to keep the processor alive without monitoring.
+        const silentSink = this.audioContext.createGain();
+        silentSink.gain.value = 0;
+        this.processor.connect(silentSink);
+        silentSink.connect(this.audioContext.destination);
 
         if (this.audioContext.state === 'suspended') {
             await this.audioContext.resume();

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Mic, MicOff, Settings, ShieldCheck, Activity, Brain } from 'lucide-react';
+import { Mic, MicOff, Settings, ShieldCheck } from 'lucide-react';
 import { AudioStream } from './lib/AudioStream';
 import './App.css';
 
@@ -105,18 +105,6 @@ function App() {
           {isConnected ? 'Stream: Active' : 'Stream: Offline'}
         </p>
 
-        {transcript && (
-          <p style={{
-            marginTop: '20px',
-            color: 'rgba(255,255,255,0.8)',
-            fontSize: '1.1rem',
-            maxWidth: '80%',
-            textAlign: 'center',
-            minHeight: '1.5em'
-          }}>
-            {transcript}
-          </p>
-        )}
 
         <p className="hint">
           {isConnected
@@ -138,8 +126,16 @@ function App() {
       </div>
 
       <div className="agent-info">
-        <h1 className="agent-name">Jenny</h1>
-        <p className="agent-role">Neuroscience & Growth Consultant</p>
+        <h1 className="agent-name">
+          {agentId.includes('jenny') || agentId.includes('template') ? 'Jenny' :
+            agentId.includes('mark') ? 'Mark' :
+              agentId.includes('aria') ? 'Aria' : 'Jules'}
+        </h1>
+        <p className="agent-role">
+          {agentId.includes('jenny') || agentId.includes('template') ? 'Neuroscience & Growth Consultant' :
+            agentId.includes('mark') ? 'ROI & Closing Specialist' :
+              agentId.includes('aria') ? 'Inbound Receptionist' : 'Systems Architect'}
+        </p>
       </div>
 
       <div className="transcript-container">

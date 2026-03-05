@@ -229,7 +229,7 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
             },
             realtime_input_config: Some(RealtimeInputConfig {
                 automatic_activity_detection: AutomaticActivityDetection {
-                    disabled: false, // Re-enable VAD now that feedback/rate issues are solved
+                    disabled: true, // HARD-DISABLE VAD to kill the feedback loop forever.
                 },
             }),
             runtime_config: Some(RuntimeConfig {

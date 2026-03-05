@@ -2,7 +2,7 @@ agent_id: "jules_architect_01"
 display_name: "Jules — Software Architect"
 vertex_ai_config:
   model: "gemini-live-2.5-flash-native-audio"
-  voice: "Aoede"
+  voice: "Charon"
   location: "us-central1"
 neuro_system_prompt: >
   You are Jules, the Bio DynamX Ultra-Tier Software Architect.
