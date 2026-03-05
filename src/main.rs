@@ -218,23 +218,45 @@ async fn handle_twilio_socket(
             }
 
             // Incoming from Vertex -> Forward to Twilio
-            Some(vertex_json) = vertex_rx.recv() => {
-                // Audio chunks are raw base64 strings not starting with '{'
-                if !vertex_json.starts_with('{') {
-                    match bridge.handle_vertex_audio(&vertex_json) {
-                        Ok(Some(twilio_msg)) => {
-                            // Extract the text from the tungstenite message to send via axum
-                            if let tokio_tungstenite::tungstenite::Message::Text(text) = twilio_msg {
-                                if let Err(e) = twilio_tx.send(axum::extract::ws::Message::Text(text.as_str().into())).await {
-                                    error!("Failed to send audio to Twilio: {}", e);
-                                    break;
+            Some(vertex_msg) = vertex_rx.recv() => {
+                // Try to parse as JSON to extract audio from Vertex response
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&vertex_msg) {
+                    if let Some(parts) = parsed
+                        .get("serverContent")
+                        .and_then(|sc| sc.get("modelTurn"))
+                        .and_then(|mt| mt.get("parts"))
+                        .and_then(|p| p.as_array())
+                    {
+                        for part in parts {
+                            if let Some(b64_audio) = part
+                                .get("inlineData")
+                                .and_then(|id| id.get("data"))
+                                .and_then(|d| d.as_str())
+                            {
+                                match bridge.handle_vertex_audio(b64_audio) {
+                                    Ok(Some(twilio_msg)) => {
+                                        if let tokio_tungstenite::tungstenite::Message::Text(text) = twilio_msg {
+                                            if let Err(e) = twilio_tx.send(axum::extract::ws::Message::Text(text.as_str().into())).await {
+                                                error!("Failed to send audio to Twilio: {}", e);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    _ => {}
                                 }
+                            }
+                        }
+                    }
+                } else if !vertex_msg.starts_with('{') {
+                    // Fallback for raw base64 (if any)
+                    match bridge.handle_vertex_audio(&vertex_msg) {
+                        Ok(Some(twilio_msg)) => {
+                            if let tokio_tungstenite::tungstenite::Message::Text(text) = twilio_msg {
+                                let _ = twilio_tx.send(axum::extract::ws::Message::Text(text.as_str().into())).await;
                             }
                         }
                         _ => {}
                     }
-                } else {
-                    debug!(msg = %vertex_json, "Vertex protocol message received");
                 }
             }
         }
