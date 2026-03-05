@@ -209,12 +209,8 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
                     text: profile.neuro_system_prompt.clone(),
                 }],
             },
-            realtime_input_config: Some(RealtimeInputConfig {
-                automatic_activity_detection: AutomaticActivityDetection {
-                    disabled: true,
-                },
-            }),
-            runtime_config: None, // Vertex Live API does not support runtimeConfig in setup
+            realtime_input_config: None, // Use default VAD so model auto-detects speech
+            runtime_config: None,
         },
     }
 }
