@@ -247,15 +247,11 @@ async fn handle_twilio_socket(
                             }
                         }
                     }
-                } else if !vertex_msg.starts_with('{') {
-                    // Fallback for raw base64 (if any)
-                    match bridge.handle_vertex_audio(&vertex_msg) {
-                        Ok(Some(twilio_msg)) => {
-                            if let tokio_tungstenite::tungstenite::Message::Text(text) = twilio_msg {
-                                let _ = twilio_tx.send(axum::extract::ws::Message::Text(text.as_str().into())).await;
-                            }
-                        }
-                        _ => {}
+                } else {
+                    // This can be the raw base64 string from Message::Binary
+                    if !vertex_msg.trim().is_empty() {
+                        let audio_msg = serde_json::json!({"type": "audio", "data": vertex_msg});
+                        let _ = web_tx.send(axum::extract::ws::Message::Text(audio_msg.to_string().into())).await;
                     }
                 }
             }

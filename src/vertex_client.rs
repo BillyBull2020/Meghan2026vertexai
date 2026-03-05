@@ -87,17 +87,21 @@ pub async fn spawn_vertex_voice_agent(
     // ── 5. Wait for Handshake (setupComplete) ────────────────
     match read.next().await {
         Some(Ok(Message::Text(text))) => {
-            info!(agent_id = %profile.agent_id, "Vertex Handshake Received: {}", &text[..text.len().min(100)]);
+            info!(agent_id = %profile.agent_id, "Vertex Initial Handshake: {}", &text[..text.len().min(200)]);
             
-            // Force the agent to speak first by sending an empty turn completion
+            // Trigger a formal greeting with a text prompt.
+            // This ensures Gemini has something to respond to immediately.
             let trigger = serde_json::json!({
                 "clientContent": {
-                    "turns": [],
+                    "turns": [{
+                        "role": "user",
+                        "parts": [{ "text": "Hello! Please introduce yourself and wait for my request." }]
+                    }],
                     "turnComplete": true
                 }
             });
             write.send(Message::Text(trigger.to_string().into())).await.ok();
-            info!("Force-triggered agent greeting");
+            info!("Sent formal greeting trigger to Gemini");
         }
         Some(res) => {
             error!("Unexpected handshake result: {:?}", res);
@@ -136,15 +140,12 @@ pub async fn spawn_vertex_voice_agent(
                     }
                 }
                 Ok(Message::Binary(data)) => {
-                    debug!(
-                        agent_id = %agent_id,
-                        bytes = data.len(),
-                        "Binary audio chunk received"
-                    );
-                    // Forward as base64-encoded string for downstream processing
+                    info!(agent_id = %agent_id, "Binary frame from Vertex ({} bytes)", data.len());
+                    // Forward raw binary bytes encoded as base64. 
+                    // main.rs will see this doesn't start with '{' and wrap it for the web client.
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
                     if let Err(e) = on_server_message.send(b64).await {
-                        error!("Failed to forward audio chunk: {}", e);
+                        error!("Failed to forward binary chunk: {}", e);
                         break;
                     }
                 }

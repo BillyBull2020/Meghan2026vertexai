@@ -17,42 +17,42 @@ function App() {
   const audioStreamRef = useRef<AudioStream | null>(null);
 
   const toggleConnection = async () => {
-    console.log('Toggle clicked, current state:', isConnected);
     if (isConnected) {
       disconnect();
     } else {
       await connect();
-      console.log('Neural link connection sequence initiated to:', FACTORY_URL);
     }
   };
 
   const connect = async () => {
-    console.log('Attempting to connect to:', FACTORY_URL, 'with agent:', agentId);
+    console.log('--- NEURAL LINK SEQUENCE START ---');
     setTranscript('Connecting to factory...');
+
+    // CRITICAL: Initialize AudioStream IMMEDIATELY in the click event loop.
+    // This ensures context is not suspended by Chromium.
+    const stream = new AudioStream((base64) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        if (Math.random() < 0.01) console.log('Outgoing audio clip...');
+        wsRef.current.send(JSON.stringify({ type: 'audio', data: base64 }));
+      }
+    });
+    audioStreamRef.current = stream;
+
     try {
+      // 1. Start audio first (user gesture turn)
+      await stream.start();
+      console.log('Audio system warmed up.');
+
+      // 2. Open WebSocket
+      console.log('Opening WebSocket to:', FACTORY_URL);
       const ws = new WebSocket(`${FACTORY_URL}?agent_id=${agentId}`);
       wsRef.current = ws;
 
-      const stream = new AudioStream((base64) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          if (Math.random() < 0.05) console.log('Sending audio chunk...', base64.substring(0, 30));
-          ws.send(JSON.stringify({ type: 'audio', data: base64 }));
-        }
-      });
-      audioStreamRef.current = stream;
-
-      ws.onopen = async () => {
-        console.log('WebSocket opened');
-        try {
-          await stream.start();
-          setIsConnected(true);
-          setIsRecording(true);
-          setTranscript('Neural link established. Speak now.');
-        } catch (micErr) {
-          console.error('Microphone error:', micErr);
-          setTranscript('Microphone access denied or failed.');
-          ws.close();
-        }
+      ws.onopen = () => {
+        console.log('WebSocket Opened successfully');
+        setIsConnected(true);
+        setIsRecording(true);
+        setTranscript('Neural link established. Speak now.');
       };
 
       ws.onmessage = async (event) => {
@@ -60,26 +60,31 @@ function App() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'audio') {
             await stream.playChunk(msg.data);
-          } else if (msg.type === 'protocol') {
-            console.log('Protocol Message:', msg.data);
+          } else {
+            console.log('Server message:', msg);
           }
         } catch (e) {
-          // If not JSON, it might be raw base64 or a status string
-          console.debug('Received non-JSON message or parse error:', e);
-          // Fallback: try to play as base64 audio if it looks like one
-          if (typeof event.data === 'string' && event.data.length > 100) {
+          // Backward compatibility for raw base64
+          if (typeof event.data === 'string' && event.data.length > 50) {
             await stream.playChunk(event.data);
           }
         }
       };
 
       ws.onclose = (e) => {
-        console.log('WebSocket closed:', e.code, e.reason);
+        console.log('WebSocket Closed:', e.code, e.reason);
         disconnect();
       };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket Error:', err);
+        setTranscript('Connection error. Check console.');
+      };
+
     } catch (err) {
-      console.error('Connection failed:', err);
-      setTranscript('Connection failed. Retrying...');
+      console.error('Handshake failed:', err);
+      setTranscript('Neural link failed. Resetting...');
+      disconnect();
     }
   };
 
