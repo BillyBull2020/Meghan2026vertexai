@@ -45,7 +45,9 @@ export class AudioStream {
         };
 
         source.connect(this.processor);
-        this.processor.connect(this.audioContext.destination);
+        // CRITICAL: Do NOT connect processor to destination. 
+        // Connecting to destination causes a "monitor" loop where you hear your own mic.
+        // this.processor.connect(this.audioContext.destination); 
 
         if (this.audioContext.state === 'suspended') {
             await this.audioContext.resume();
