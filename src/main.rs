@@ -67,7 +67,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── 2. Initialize Registry & Session Manager ─────────────
     let registry = hot_reload::new_registry();
-    hot_reload::load_all_profiles(&registry, &args.profiles_dir).await?;
+    let count = hot_reload::load_all_profiles(&registry, &args.profiles_dir).await?;
+    info!(count, "Registry initialized. Active Agents:");
+    {
+        let reg = registry.read().await;
+        for (id, profile) in reg.iter() {
+            info!("  - [{}] Voice: {}", id, profile.vertex_ai_config.voice);
+        }
+    }
     hot_reload::watch_profiles_directory(registry.clone(), args.profiles_dir.clone()).await?;
 
     let session_manager = Arc::new(session_manager::SessionManager::new(registry.clone()));
