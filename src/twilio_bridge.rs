@@ -54,15 +54,15 @@ impl TwilioBridge {
                 // 2. Convert mu-law -> PCM16 (8kHz)
                 let pcm16_8k = audio_util::mulaw_to_pcm16(&raw_mulaw);
 
-                // 3. Upsample 8kHz -> 16kHz
-                let pcm16_16k = audio_util::upsample_8_to_16(&pcm16_8k);
+                // 3. Upsample 8kHz -> 24kHz (for Gemini Live Native Audio)
+                let pcm16_24k = audio_util::upsample_8_to_24(&pcm16_8k);
 
                 // 4. Wrap in Vertex RealtimeInput
                 let b64_pcm = base64::engine::general_purpose::STANDARD.encode(
                     unsafe {
                         std::slice::from_raw_parts(
-                            pcm16_16k.as_ptr() as *const u8,
-                            pcm16_16k.len() * 2
+                            pcm16_24k.as_ptr() as *const u8,
+                            pcm16_24k.len() * 2
                         )
                     }
                 );
@@ -70,7 +70,7 @@ impl TwilioBridge {
                 let vertex_msg = serde_json::json!({
                     "realtimeInput": {
                         "mediaChunks": [{
-                            "mimeType": "audio/pcm;rate=16000",
+                            "mimeType": "audio/pcm;rate=24000",
                             "data": b64_pcm
                         }]
                     }
@@ -103,9 +103,9 @@ impl TwilioBridge {
             .map(|c| i16::from_le_bytes([c[0], c[1]]))
             .collect();
 
-        // 2. Downsample (Assuming 16kHz -> 8kHz for now, Vertex Gemini Live is flexible)
-        // If Vertex sends 24kHz, we'd need a 3:1 decimation. 16kHz is 2:1.
-        let pcm16_8k = audio_util::downsample_16_to_8(&pcm16);
+        // 2. Downsample (Gemini Live native audio is 24kHz -> 8kHz Twilio)
+        // Since Vertex sends 24kHz, we use a 3:1 decimation.
+        let pcm16_8k = audio_util::downsample_24_to_8(&pcm16);
 
         // 3. Convert PCM16 -> mu-law
         let mulaw = audio_util::pcm16_to_mulaw(&pcm16_8k);

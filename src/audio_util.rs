@@ -76,3 +76,29 @@ pub fn upsample_8_to_16(input: &[i16]) -> Vec<i16> {
 pub fn downsample_16_to_8(input: &[i16]) -> Vec<i16> {
     input.iter().step_by(2).copied().collect()
 }
+
+/// Downsample PCM16 from 24kHz to 8kHz (decimation by 3).
+pub fn downsample_24_to_8(input: &[i16]) -> Vec<i16> {
+    input.iter().step_by(3).copied().collect()
+}
+
+/// Upsample PCM16 from 8kHz to 24kHz using linear interpolation.
+pub fn upsample_8_to_24(input: &[i16]) -> Vec<i16> {
+    if input.is_empty() {
+        return Vec::new();
+    }
+    let mut output = Vec::with_capacity(input.len() * 3);
+    for i in 0..input.len() - 1 {
+        let current = input[i] as f32;
+        let next = input[i + 1] as f32;
+        output.push(current as i16);
+        output.push((current + (next - current) * 0.333333) as i16);
+        output.push((current + (next - current) * 0.666667) as i16);
+    }
+    // Handle last sample
+    let last = input[input.len() - 1];
+    output.push(last);
+    output.push(last);
+    output.push(last);
+    output
+}
