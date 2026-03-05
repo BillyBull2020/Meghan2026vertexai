@@ -82,7 +82,26 @@ pub async fn spawn_vertex_voice_agent(
         .await
         .map_err(|e| IronclawError::WebSocket(format!("Setup send failed: {}", e)))?;
 
-    info!(agent_id = %profile.agent_id, "Setup message sent");
+    info!(agent_id = %profile.agent_id, "Setup message sent, awaiting handshake...");
+
+    // ── 5. Wait for Handshake (setupComplete) ────────────────
+    match read.next().await {
+        Some(Ok(Message::Text(text))) => {
+            info!(agent_id = %profile.agent_id, "Vertex Handshake Received: {}", &text[..text.len().min(100)]);
+            // Verify if it's setupComplete (optional but good for logs)
+            if !text.contains("setupComplete") {
+                warn!("Handshake message was not setupComplete: {}", text);
+            }
+        }
+        Some(res) => {
+            error!("Unexpected handshake result: {:?}", res);
+            return Err(IronclawError::WebSocket("Handshake failed".to_string()));
+        }
+        None => {
+            error!("Vertex closed connection during handshake");
+            return Err(IronclawError::WebSocket("Connection closed".to_string()));
+        }
+    }
 
     // ── 6. Create the message channel ────────────────────────
     let (tx, mut rx) = mpsc::channel::<Message>(256);
@@ -104,7 +123,7 @@ pub async fn spawn_vertex_voice_agent(
         while let Some(result) = read.next().await {
             match result {
                 Ok(Message::Text(text)) => {
-                    debug!(agent_id = %agent_id, "Server message received");
+                    info!(agent_id = %agent_id, "Vertex Protocol Message: {}", &text[..text.len().min(200)]);
                     if let Err(e) = on_server_message.send(text.to_string()).await {
                         error!("Failed to forward server message: {}", e);
                         break;
@@ -199,7 +218,11 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
                     text: profile.neuro_system_prompt.clone(),
                 }],
             },
-            realtime_input_config: None, // Use default VAD so model auto-detects speech
+            realtime_input_config: Some(RealtimeInputConfig {
+                automatic_activity_detection: AutomaticActivityDetection {
+                    disabled: false, // Enable VAD so model greets automatically
+                },
+            }),
             runtime_config: None,
         },
     }

@@ -34,6 +34,7 @@ function App() {
 
       const stream = new AudioStream((base64) => {
         if (ws.readyState === WebSocket.OPEN) {
+          if (Math.random() < 0.05) console.log('Sending audio chunk...', base64.substring(0, 30));
           ws.send(JSON.stringify({ type: 'audio', data: base64 }));
         }
       });

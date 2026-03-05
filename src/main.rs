@@ -308,6 +308,15 @@ async fn handle_web_socket(
                     Ok(axum::extract::ws::Message::Text(text)) => {
                         match bridge.handle_web_message(&text) {
                             Ok(Some(vertex_msg)) => {
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Some(msg_type) = parsed.get("type").and_then(|t| t.as_str()) {
+                                        if msg_type == "audio" {
+                                            info!("Web audio chunk received ({} chars)", text.len());
+                                        } else {
+                                            info!("Web protocol message: {}", msg_type);
+                                        }
+                                    }
+                                }
                                 if let Err(e) = sm.send_to_session(session_id, vertex_msg).await {
                                     error!("Failed to send to Vertex: {}", e);
                                     break;

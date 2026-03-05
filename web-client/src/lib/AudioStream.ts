@@ -14,28 +14,22 @@ export class AudioStream {
     }
 
     async start() {
-        // Create context at 24kHz - this matches the model output exactly
+        // Create context at 16kHz - this is the "Static Killer" pattern.
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-            sampleRate: 24000,
+            sampleRate: this.inputSampleRate,
         });
 
         this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const source = this.audioContext.createMediaStreamSource(this.stream);
 
-        // We capture at 24kHz but the model wants 16kHz input.
-        // ScriptProcessor will automatically resample to context rate, 
-        // so we must send a 16kHz chunk.
+        // Capture at 16kHz directly.
         this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
         this.processor.onaudioprocess = (e) => {
             const inputData = e.inputBuffer.getChannelData(0);
 
-            // Basic decimation from 24kHz to 16kHz (factor of 1.5)
-            // or we just send 24kHz if the model is gemini-live-2.5-flash-native-audio
-            // Re-evaluating based on Jules standards: Input 16kHz PCM
-            const pcm16Data = this.downsampleTo16k(inputData, 24000);
-
-            const pcmBuffer = this.floatTo16BitPCM(pcm16Data);
+            // Convert float32 -> PCM16 (16kHz)
+            const pcmBuffer = this.floatTo16BitPCM(inputData);
             const bytes = new Uint8Array(pcmBuffer);
             let binary = '';
             for (let i = 0; i < bytes.byteLength; i++) {
@@ -50,17 +44,6 @@ export class AudioStream {
         if (this.audioContext.state === 'suspended') {
             await this.audioContext.resume();
         }
-    }
-
-    private downsampleTo16k(input: Float32Array, fromRate: number): Float32Array {
-        if (fromRate === 16000) return input;
-        const ratio = fromRate / 16000;
-        const length = Math.floor(input.length / ratio);
-        const result = new Float32Array(length);
-        for (let i = 0; i < length; i++) {
-            result[i] = input[Math.floor(i * ratio)];
-        }
-        return result;
     }
 
     stop() {
@@ -80,7 +63,7 @@ export class AudioStream {
         return output.buffer;
     }
 
-    // Playback logic for the 24kHz response
+    // Playback logic: create buffer at 24kHz, browser resamples automatically to 16kHz context
     async playChunk(base64Data: string) {
         if (!this.audioContext) return;
         try {
@@ -96,7 +79,7 @@ export class AudioStream {
             const float32 = new Float32Array(pcm16.length);
             for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768;
 
-            const buffer = this.audioContext.createBuffer(1, float32.length, 24000);
+            const buffer = this.audioContext.createBuffer(1, float32.length, this.outputSampleRate);
             buffer.getChannelData(0).set(float32);
 
             const source = this.audioContext.createBufferSource();
