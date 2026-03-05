@@ -105,9 +105,37 @@ pub async fn spawn_vertex_voice_agent(
             match result {
                 Ok(Message::Text(text)) => {
                     debug!(agent_id = %agent_id, "Server message received");
-                    if let Err(e) = on_server_message.send(text.to_string()).await {
-                        error!("Failed to forward server message: {}", e);
-                        break;
+                    
+                    let is_audio = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                        let mut found_audio = false;
+                        if let Some(server_content) = json.get("serverContent") {
+                            if let Some(model_turn) = server_content.get("modelTurn") {
+                                if let Some(parts) = model_turn.get("parts").and_then(|p| p.as_array()) {
+                                    for part in parts {
+                                        if let Some(inline_data) = part.get("inlineData") {
+                                            if let Some(b64_data) = inline_data.get("data").and_then(|d| d.as_str()) {
+                                                found_audio = true;
+                                                if let Err(e) = on_server_message.send(b64_data.to_string()).await {
+                                                    error!("Failed to forward audio chunk: {}", e);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        found_audio
+                    } else {
+                        false
+                    };
+
+                    // If it wasn't audio JSON, send it as normal text.
+                    if !is_audio {
+                        if let Err(e) = on_server_message.send(text.to_string()).await {
+                            error!("Failed to forward server message: {}", e);
+                            break;
+                        }
                     }
                 }
                 Ok(Message::Binary(data)) => {
