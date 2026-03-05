@@ -1,0 +1,64 @@
+[package]
+name = "ironclaw"
+version = "0.1.0"
+edition = "2024"
+authors = ["Bio DynamX Engineering <eng@biodynamx.com>"]
+description = "Ironclaw – A scalable, multi-tenant voice agent factory powered by Vertex AI Gemini Live and neuroscience-driven personas."
+
+[[bin]]
+name = "ironclaw"
+path = "src/main.rs"
+
+[dependencies]
+# Async Runtime
+tokio = { version = "1", features = ["full"] }
+
+# WebSocket Client
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+futures-util = "0.3"
+
+# File System Watcher (Hot-Reload)
+notify = "7"
+notify-debouncer-mini = "0.5"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# HTTP Client (for OAuth2 token refresh)
+reqwest = { version = "0.12", features = ["json", "native-tls"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Google Cloud Auth (ADC)
+gcp_auth = "0.12"
+
+# CLI / Env
+clap = { version = "4", features = ["derive"] }
+dotenvy = "0.15"
+
+# Unique IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# HTTP Server & Routing
+axum = { version = "0.8", features = ["ws"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
+
+# Base64 encoding for audio
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
