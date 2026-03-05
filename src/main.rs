@@ -248,10 +248,19 @@ async fn handle_twilio_socket(
                         }
                     }
                 } else {
-                    // This can be the raw base64 string from Message::Binary
+                    // Raw binary from Vertex -> bridge for mu-law conversion
                     if !vertex_msg.trim().is_empty() {
-                        let audio_msg = serde_json::json!({"type": "audio", "data": vertex_msg});
-                        let _ = web_tx.send(axum::extract::ws::Message::Text(audio_msg.to_string().into())).await;
+                        match bridge.handle_vertex_audio(&vertex_msg) {
+                            Ok(Some(twilio_msg)) => {
+                                if let tokio_tungstenite::tungstenite::Message::Text(text) = twilio_msg {
+                                    if let Err(e) = twilio_tx.send(axum::extract::ws::Message::Text(text.as_str().into())).await {
+                                        error!("Failed to send binary-to-twilio: {}", e);
+                                        break;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
