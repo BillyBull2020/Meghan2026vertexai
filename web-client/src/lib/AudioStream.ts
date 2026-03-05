@@ -14,21 +14,29 @@ export class AudioStream {
     }
 
     async start() {
+        // Create context at 24kHz - this matches the model output exactly
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-            sampleRate: this.inputSampleRate, // Force 16kHz Input
+            sampleRate: 24000,
         });
 
         this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const source = this.audioContext.createMediaStreamSource(this.stream);
 
-        // Create processor for 16-bit PCM conversion
+        // We capture at 24kHz but the model wants 16kHz input.
+        // ScriptProcessor will automatically resample to context rate, 
+        // so we must send a 16kHz chunk.
         this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
         this.processor.onaudioprocess = (e) => {
             const inputData = e.inputBuffer.getChannelData(0);
-            const pcmData = this.floatTo16BitPCM(inputData);
-            // Send base64 encoded chunks to Gemini
-            const bytes = new Uint8Array(pcmData);
+
+            // Basic decimation from 24kHz to 16kHz (factor of 1.5)
+            // or we just send 24kHz if the model is gemini-live-2.5-flash-native-audio
+            // Re-evaluating based on Jules standards: Input 16kHz PCM
+            const pcm16Data = this.downsampleTo16k(inputData, 24000);
+
+            const pcmBuffer = this.floatTo16BitPCM(pcm16Data);
+            const bytes = new Uint8Array(pcmBuffer);
             let binary = '';
             for (let i = 0; i < bytes.byteLength; i++) {
                 binary += String.fromCharCode(bytes[i]);
@@ -44,13 +52,24 @@ export class AudioStream {
         }
     }
 
+    private downsampleTo16k(input: Float32Array, fromRate: number): Float32Array {
+        if (fromRate === 16000) return input;
+        const ratio = fromRate / 16000;
+        const length = Math.floor(input.length / ratio);
+        const result = new Float32Array(length);
+        for (let i = 0; i < length; i++) {
+            result[i] = input[Math.floor(i * ratio)];
+        }
+        return result;
+    }
+
     stop() {
         this.stream?.getTracks().forEach(track => track.stop());
         this.processor?.disconnect();
         this.audioContext?.close();
     }
 
-    // The "Static Killer" - Converts browser float audio to raw 16-bit PCM
+    // The "Static Killer" - Converts browser float audio to raw 16_bit PCM
     private floatTo16BitPCM(input: Float32Array): ArrayBuffer {
         let i = input.length;
         const output = new Int16Array(i);
@@ -77,7 +96,7 @@ export class AudioStream {
             const float32 = new Float32Array(pcm16.length);
             for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768;
 
-            const buffer = this.audioContext.createBuffer(1, float32.length, this.outputSampleRate);
+            const buffer = this.audioContext.createBuffer(1, float32.length, 24000);
             buffer.getChannelData(0).set(float32);
 
             const source = this.audioContext.createBufferSource();
