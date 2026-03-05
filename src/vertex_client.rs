@@ -85,24 +85,9 @@ pub async fn spawn_vertex_voice_agent(
     info!(agent_id = %profile.agent_id, "Setup message sent, awaiting handshake...");
 
     // ── 5. Wait for Handshake (setupComplete) ────────────────
-    match read.next().await {
-        Some(Ok(Message::Text(text))) => {
-            info!(agent_id = %profile.agent_id, "Vertex Initial Handshake: {}", &text[..text.len().min(200)]);
-            
-            // Trigger a formal greeting with a text prompt.
-            // This ensures Gemini has something to respond to immediately.
-            let trigger = serde_json::json!({
-                "clientContent": {
-                    "turns": [{
-                        "role": "user",
-                        "parts": [{ "text": "Hello! Please introduce yourself and wait for my request." }]
-                    }],
-                    "turnComplete": true
-                }
-            });
-            write.send(Message::Text(trigger.to_string().into())).await.ok();
-            info!("Sent formal greeting trigger to Gemini");
-        }
+    let text = match read.next().await {
+        Some(Ok(Message::Text(t))) => t.to_string(),
+        Some(Ok(Message::Binary(b))) => String::from_utf8_lossy(&b).to_string(),
         Some(res) => {
             error!("Unexpected handshake result: {:?}", res);
             return Err(IronclawError::WebSocket("Handshake failed".to_string()));
@@ -111,7 +96,25 @@ pub async fn spawn_vertex_voice_agent(
             error!("Vertex closed connection during handshake");
             return Err(IronclawError::WebSocket("Connection closed".to_string()));
         }
-    }
+    };
+
+    info!(agent_id = %profile.agent_id, "Vertex Initial Handshake: {}", &text[..text.len().min(200)]);
+    
+    // Forward the handshake back to the bridge/main handler
+    let _ = on_server_message.send(text).await;
+
+    // Trigger formal greeting
+    let trigger = serde_json::json!({
+        "clientContent": {
+            "turns": [{
+                "role": "user",
+                "parts": [{ "text": "Hello! Please introduce yourself and wait for my request." }]
+            }],
+            "turnComplete": true
+        }
+    });
+    write.send(Message::Text(trigger.to_string().into())).await.ok();
+    info!("Sent formal greeting trigger to Gemini");
 
     // ── 6. Create the message channel ────────────────────────
     let (tx, mut rx) = mpsc::channel::<Message>(256);
@@ -140,13 +143,22 @@ pub async fn spawn_vertex_voice_agent(
                     }
                 }
                 Ok(Message::Binary(data)) => {
-                    info!(agent_id = %agent_id, "Binary frame from Vertex ({} bytes)", data.len());
-                    // Forward raw binary bytes encoded as base64. 
-                    // main.rs will see this doesn't start with '{' and wrap it for the web client.
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-                    if let Err(e) = on_server_message.send(b64).await {
-                        error!("Failed to forward binary chunk: {}", e);
-                        break;
+                    // Gemini sometimes sends JSON protocol in binary frames.
+                    // If it starts with '{', treat it as a protocol message (text).
+                    if !data.is_empty() && data[0] == b'{' {
+                        let text = String::from_utf8_lossy(&data).to_string();
+                        info!(agent_id = %agent_id, "Vertex Protocol (Binary): {}", &text[..text.len().min(200)]);
+                        if let Err(e) = on_server_message.send(text).await {
+                            error!("Failed to forward binary protocol: {}", e);
+                            break;
+                        }
+                    } else {
+                        info!(agent_id = %agent_id, "Binary audio chunk ({} bytes)", data.len());
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                        if let Err(e) = on_server_message.send(b64).await {
+                            error!("Failed to forward binary chunk: {}", e);
+                            break;
+                        }
                     }
                 }
                 Ok(Message::Close(frame)) => {
