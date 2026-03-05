@@ -3,9 +3,8 @@ import { Mic, MicOff, Settings, ShieldCheck } from 'lucide-react';
 import { AudioStream } from './lib/AudioStream';
 import './App.css';
 
-const FACTORY_URL = window.location.hostname === 'localhost'
-  ? 'ws://localhost:3000/web-session'
-  : 'wss://ironclaw-factory-uc4oqbsooa-uc.a.run.app/web-session';
+// ALWAYS use cloud - local server requires gcloud auth which is not configured
+const FACTORY_URL = 'wss://ironclaw-factory-252305301168.us-central1.run.app/web-session';
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);

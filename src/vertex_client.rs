@@ -227,17 +227,8 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
                     text: profile.neuro_system_prompt.clone(),
                 }],
             },
-            realtime_input_config: Some(RealtimeInputConfig {
-                automatic_activity_detection: AutomaticActivityDetection {
-                    disabled: true, // HARD-DISABLE VAD to kill the feedback loop forever.
-                },
-            }),
-            runtime_config: Some(RuntimeConfig {
-                audio_configuration: AudioConfiguration {
-                    start_sensitivity: "LOW".to_string(),
-                    end_sensitivity: "LOW".to_string(),
-                },
-            }),
+            realtime_input_config: None,
+            runtime_config: None,
         },
     }
 }
