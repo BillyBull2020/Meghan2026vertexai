@@ -105,37 +105,9 @@ pub async fn spawn_vertex_voice_agent(
             match result {
                 Ok(Message::Text(text)) => {
                     debug!(agent_id = %agent_id, "Server message received");
-                    
-                    let is_audio = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                        let mut found_audio = false;
-                        if let Some(server_content) = json.get("serverContent") {
-                            if let Some(model_turn) = server_content.get("modelTurn") {
-                                if let Some(parts) = model_turn.get("parts").and_then(|p| p.as_array()) {
-                                    for part in parts {
-                                        if let Some(inline_data) = part.get("inlineData") {
-                                            if let Some(b64_data) = inline_data.get("data").and_then(|d| d.as_str()) {
-                                                found_audio = true;
-                                                if let Err(e) = on_server_message.send(b64_data.to_string()).await {
-                                                    error!("Failed to forward audio chunk: {}", e);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        found_audio
-                    } else {
-                        false
-                    };
-
-                    // If it wasn't audio JSON, send it as normal text.
-                    if !is_audio {
-                        if let Err(e) = on_server_message.send(text.to_string()).await {
-                            error!("Failed to forward server message: {}", e);
-                            break;
-                        }
+                    if let Err(e) = on_server_message.send(text.to_string()).await {
+                        error!("Failed to forward server message: {}", e);
+                        break;
                     }
                 }
                 Ok(Message::Binary(data)) => {
@@ -180,6 +152,24 @@ pub async fn spawn_vertex_voice_agent(
     })
 }
 
+/// Build a 16kHz silent PCM16 chunk to act as a keep-alive/heartbeat.
+/// Gemini Live expects 16kHz input. 40ms of silence = 320 bytes.
+pub fn build_silence_keepalive() -> Message {
+    let silence = vec![0u8; 320];
+    let b64_silence = base64::engine::general_purpose::STANDARD.encode(&silence);
+
+    let payload = serde_json::json!({
+        "realtimeInput": {
+            "mediaChunks": [{
+                "mimeType": "audio/pcm;rate=16000",
+                "data": b64_silence
+            }]
+        }
+    });
+
+    Message::Text(payload.to_string().into())
+}
+
 /// Build the setup message from an agent profile.
 fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
     let project_id = std::env::var("GOOGLE_CLOUD_PROJECT")
@@ -215,26 +205,6 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
     }
 }
 
-/// Send a silent PCM16 keep-alive chunk to prevent WebSocket timeout.
-///
-/// Reliability Pattern #6: Send 10ms of silence (240 samples at 24kHz)
-/// every 2 seconds during long-running tool calls.
-pub fn build_silence_keepalive() -> Message {
-    // 240 samples × 2 bytes/sample = 480 bytes of silence
-    let silence = vec![0u8; 480];
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&silence);
-
-    let payload = serde_json::json!({
-        "realtimeInput": {
-            "mediaChunks": [{
-                "mimeType": "audio/pcm;rate=24000",
-                "data": b64
-            }]
-        }
-    });
-
-    Message::Text(payload.to_string().into())
-}
 
 /// Inject text context into a live session (e.g., for persona handoff).
 ///
