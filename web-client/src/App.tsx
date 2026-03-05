@@ -5,7 +5,7 @@ import './App.css';
 
 const FACTORY_URL = window.location.hostname === 'localhost'
   ? 'ws://localhost:3000/web-session'
-  : 'wss://ironclaw-factory-252305301168.us-central1.run.app/web-session';
+  : 'wss://ironclaw-factory-uc4oqbsooa-uc.a.run.app/web-session';
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);
@@ -22,6 +22,7 @@ function App() {
       disconnect();
     } else {
       await connect();
+      console.log('Neural link connection sequence initiated to:', FACTORY_URL);
     }
   };
 

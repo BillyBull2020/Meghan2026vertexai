@@ -88,10 +88,16 @@ pub async fn spawn_vertex_voice_agent(
     match read.next().await {
         Some(Ok(Message::Text(text))) => {
             info!(agent_id = %profile.agent_id, "Vertex Handshake Received: {}", &text[..text.len().min(100)]);
-            // Verify if it's setupComplete (optional but good for logs)
-            if !text.contains("setupComplete") {
-                warn!("Handshake message was not setupComplete: {}", text);
-            }
+            
+            // Force the agent to speak first by sending an empty turn completion
+            let trigger = serde_json::json!({
+                "clientContent": {
+                    "turns": [],
+                    "turnComplete": true
+                }
+            });
+            write.send(Message::Text(trigger.to_string().into())).await.ok();
+            info!("Force-triggered agent greeting");
         }
         Some(res) => {
             error!("Unexpected handshake result: {:?}", res);
@@ -220,7 +226,7 @@ fn build_setup_message(profile: &AgentProfile) -> SetupMessage {
             },
             realtime_input_config: Some(RealtimeInputConfig {
                 automatic_activity_detection: AutomaticActivityDetection {
-                    disabled: false, // Enable VAD so model greets automatically
+                    disabled: true, // Disable VAD to prevent feedback/machine scream
                 },
             }),
             runtime_config: None,
@@ -251,17 +257,28 @@ pub fn build_context_injection(context_blocks: &[&str]) -> Message {
 
 /// Get an access token from GCP Application Default Credentials.
 async fn get_access_token() -> Result<String, IronclawError> {
-    let provider = gcp_auth::provider()
-        .await
-        .map_err(|e| IronclawError::Auth(format!("Failed to get ADC provider: {}", e)))?;
+    // 1. Try standard ADC
+    if let Ok(provider) = gcp_auth::provider().await {
+        let scopes = &["https://www.googleapis.com/auth/cloud-platform"];
+        if let Ok(token) = provider.token(scopes).await {
+            return Ok(token.as_str().to_string());
+        }
+    }
 
-    let scopes = &["https://www.googleapis.com/auth/cloud-platform"];
-    let token = provider
-        .token(scopes)
-        .await
-        .map_err(|e| IronclawError::Auth(format!("Failed to get access token: {}", e)))?;
+    // 2. Fallback to gcloud CLI (for local development stability)
+    let output = std::process::Command::new("gcloud")
+        .args(["auth", "print-access-token"])
+        .output()
+        .map_err(|e| IronclawError::Auth(format!("Gcloud CLI failed: {}", e)))?;
 
-    Ok(token.as_str().to_string())
+    if output.status.success() {
+        let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !token.is_empty() {
+            return Ok(token);
+        }
+    }
+
+    Err(IronclawError::Auth("All auth methods failed. Run 'gcloud auth application-default login'".to_string()))
 }
 
 #[cfg(test)]
