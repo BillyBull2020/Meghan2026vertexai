@@ -19,7 +19,13 @@ export class AudioStream {
             sampleRate: this.inputSampleRate,
         });
 
-        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            }
+        });
         const source = this.audioContext.createMediaStreamSource(this.stream);
 
         // Capture at 16kHz directly.
